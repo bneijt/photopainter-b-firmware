@@ -1,1 +1,14 @@
 build
+_deps
+CMakeCache.txt
+CMakeDoxyfile.in
+CMakeDoxygenDefaults.cmake
+CMakeFiles/
+generated/
+pico-sdk/
+Makefile
+cmake_install.cmake
+epd.*
+*.log
+*.ld
+*.a
