@@ -90,6 +90,75 @@ int EPD_7in3e_display_BMP(const char *path, float vol)
     return 0;
 }
 
+int EPD_7in3e_display_bmp(const char *path)
+{
+    printf("e-Paper init\n");
+    EPD_7IN3E_Init();
+
+    //Create a new image cache
+    UBYTE *image_buffer;
+    UDOUBLE Imagesize = ((EPD_7IN3E_WIDTH % 2 == 0)? (EPD_7IN3E_WIDTH / 2 ): (EPD_7IN3E_WIDTH / 2 + 1)) * EPD_7IN3E_HEIGHT;
+    if((image_buffer = (UBYTE *)malloc(Imagesize)) == NULL) {
+        printf("Failed to apply for black memory...\n");
+        return -1;
+    }
+    printf("paint black\n");
+    Paint_NewImage(image_buffer, EPD_7IN3E_WIDTH, EPD_7IN3E_HEIGHT, 0, EPD_7IN3E_WHITE);
+    Paint_SetScale(6);
+
+    printf("Display BMP\n");
+    Paint_SelectImage(image_buffer);
+    Paint_Clear(EPD_7IN3E_WHITE);
+    
+    GUI_ReadBmp_RGB_6Color(path, 0, 0);
+
+    if(Paint_GetRotate() == 90)
+        Paint_SetRotate(270);
+    else
+        Paint_SetRotate(180);
+    EPD_7IN3E_Display(image_buffer);
+    printf("e-Paper sleep...\n");
+    EPD_7IN3E_Sleep();
+    free(image_buffer);
+    return 0;
+}
+
+int EPD_7in3e_display_message(char const *message)
+{
+    printf("e-Paper Init and Clear...\r\n");
+    EPD_7IN3E_Init();
+
+    //Create a new image cache
+    UBYTE *BlackImage;
+    UDOUBLE Imagesize = ((EPD_7IN3E_WIDTH % 2 == 0)? (EPD_7IN3E_WIDTH / 2 ): (EPD_7IN3E_WIDTH / 2 + 1)) * EPD_7IN3E_HEIGHT;
+    if((BlackImage = (UBYTE *)malloc(Imagesize)) == NULL) {
+        printf("Failed to apply for black memory...\r\n");
+        return -1;
+    }
+    printf("Paint_NewImage\r\n");
+    Paint_NewImage(BlackImage, EPD_7IN3E_WIDTH, EPD_7IN3E_HEIGHT, 0, EPD_7IN3E_WHITE);
+    Paint_SetScale(6);
+
+    printf("Display BMP\r\n");
+    Paint_SelectImage(BlackImage);
+    Paint_Clear(EPD_7IN3E_WHITE);
+    
+    Paint_DrawBitMap(Image6color);
+
+    Paint_SetRotate(270);
+    Paint_DrawString_EN(10, 10, message, &Font16, EPD_7IN3E_BLACK, EPD_7IN3E_WHITE);
+
+    printf("EPD_Display\r\n");
+    EPD_7IN3E_Display(BlackImage);
+
+    printf("Goto Sleep...\r\n\r\n");
+    EPD_7IN3E_Sleep();
+    free(BlackImage);
+    BlackImage = NULL;
+    return 0;
+}
+
+
 int EPD_7in3e_display(float vol)
 {
     printf("e-Paper Init and Clear...\r\n");

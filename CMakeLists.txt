@@ -4,9 +4,9 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
-set(sdkVersion 2.0.0)
+set(sdkVersion 2.2.0)
 set(toolchainVersion 13_2_Rel1)
-set(picotoolVersion 2.0.0)
+set(picotoolVersion 2.2.0)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
     include(${picoVscode})
@@ -46,5 +46,4 @@ pico_enable_stdio_uart(epd 0)
 
 # create map/bin/hex/uf2 file etc.
 pico_add_extra_outputs(epd)
- 
-target_link_libraries(epd examples ePaper GUI led Fonts Config RTC FatFs_SPI)
+target_link_libraries(epd examples ePaper GUI led Fonts Config RTC FatFs_SPI pico_rand)

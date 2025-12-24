@@ -1,146 +1,131 @@
-#include "EPD_Test.h"   // Examples
+#include "EPD_Test.h" // Examples
 #include "run_File.h"
-
+#include <hardware/watchdog.h>
+#include <pico/rand.h>
+#include <unistd.h>
 #include "led.h"
 #include "waveshare_PCF85063.h" // RTC
 #include "DEV_Config.h"
 
 #include <time.h>
 
-extern const char *fileList;
-extern char pathName[];
+// Actions
+#define PWR_LED_ON gpio_put(LED_PWR, 1)
+#define PWR_LED_OFF gpio_put(LED_PWR, 0)
 
-#define enChargingRtc 0
+#define BAT_IS_CHARGING gpio_get(CHARGE_STATE) == 0
+#define BAT_AVAILABLE gpio_get(VBUS) >= 1
 
-/*
-Mode 0: Automatically get pic folder names and sort them
-Mode 1: Automatically get pic folder names but not sorted
-Mode 2: pic folder name is not automatically obtained, users need to create fileList.txt file and write the picture name in TF card by themselves
-*/
-#define Mode 0
+#define MISSING_SD_CARD sdTest()
+// Sleep LOOP_DELAY_MS milliseconds per loop
+#define LOOP_DELAY_MS 5000
+// Display image every NEXT_IMAGE_EVERY loops
+#define NEXT_IMAGE_EVERY 720
 
+int MAX_PICTURE_INDEX = 9999;
 
-float measureVBAT(void)
+float measure_battery_voltage(void)
 {
-    float Voltage=0.0;
+    float voltage = 0.0;
     const float conversion_factor = 3.3f / (1 << 12);
     uint16_t result = adc_read();
-    Voltage = result * conversion_factor * 3;
-    printf("Raw value: 0x%03x, voltage: %f V\n", result, Voltage);
-    return Voltage;
+    voltage = result * conversion_factor * 3;
+    printf("Raw battery measurement: 0x%03x, voltage: %f V\n", result, voltage);
+    return voltage;
 }
 
-void chargeState_callback() 
+int rand_between(int min, int max)
 {
-    if(DEV_Digital_Read(VBUS)) {
-        if(!DEV_Digital_Read(CHARGE_STATE)) {  // is charging
-            ledCharging();
-        }
-        else {  // charge complete
-            ledCharged();
-        }
+    return (get_rand_32() % (max - min + 1)) + min;
+}
+
+void charge_state_callback()
+{
+    if (BAT_IS_CHARGING)
+    {
+        PWR_LED_ON;
+    }
+    else
+    {
+        PWR_LED_OFF;
     }
 }
 
-void run_display(Time_data Time, Time_data alarmTime, char hasCard)
+bool file_exists(const char *path)
 {
-    if(hasCard) {
-        setFilePath();
-        EPD_7in3e_display_BMP(pathName, measureVBAT());   // display bmp
-    }
-    else {
-        printf("led_ON_PWR...\r\n");
-        EPD_7in3e_display(measureVBAT());
-    }
-    DEV_Delay_ms(100);
-    PCF85063_clear_alarm_flag();    // clear RTC alarm flag
-    #if enChargingRtc
-        rtcRunAlarm(Time, alarmTime);  // RTC run alarm
-    #endif
+    return access(path, F_OK) == 0;
+}
+
+void display_next_image()
+{
+    run_mount();
+    char picture_path[20];
+    do
+    {
+        int next_picture_idx = rand_between(1, MAX_PICTURE_INDEX);
+        sprintf(picture_path, "0:/pic/%04d.bmp", next_picture_idx);
+        printf("Max idx is %i, checking for image: %s\n", MAX_PICTURE_INDEX, picture_path);
+    } while (!file_exists(picture_path) && MAX_PICTURE_INDEX-- > 0);
+
+    printf("Displaying image: %s\n", picture_path);
+    EPD_7in3e_display_bmp(picture_path);
+    run_unmount();
 }
 
 int main(void)
 {
-    Time_data Time = {2024-2000, 3, 31, 0, 0, 0};
-    Time_data alarmTime = Time;
-    // alarmTime.seconds += 10;
-    // alarmTime.minutes += 5; 
-    alarmTime.hours +=12;
-    char isCard = 0;
-  
-    printf("Init...\r\n");
-    if(DEV_Module_Init() != 0) {  // DEV init
+    printf("Start\n");
+
+    if (DEV_Module_Init() != 0)
+    {
+        printf("Init failed\n");
         return -1;
     }
-    
-    watchdog_enable(8*1000, 1);   // 8s
-    DEV_Delay_ms(1000);
-    PCF85063_init();    // RTC init
-    rtcRunAlarm(Time, alarmTime);  // RTC run alarm
-    gpio_set_irq_enabled_with_callback(CHARGE_STATE, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, chargeState_callback);
 
-    if(measureVBAT() < 3.1) {   // battery power is low
-        printf("low power ...\r\n");
-        PCF85063_alarm_Time_Disable();
-        ledLowPower();  // LED flash for Low power
+    if (BAT_AVAILABLE)
+    {
+        if (measure_battery_voltage() < 3.1)
+        {
+            printf("Low power\n");
+            ledLowPower(); // LED flash for Low power
+            powerOff();    // BAT off
+            return 0;
+        }
+        gpio_set_irq_enabled_with_callback(CHARGE_STATE, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, charge_state_callback);
+    }
+    if (MISSING_SD_CARD)
+    {
+        printf("No SD Card found\n");
+        EPD_7in3e_display_message("No SD Card found");
         powerOff(); // BAT off
         return 0;
     }
-    else {
-        printf("work ...\r\n");
-        ledPowerOn();
-    }
+    printf("Enable watchdog\n");
+    watchdog_enable(2 * LOOP_DELAY_MS, true);
+    watchdog_update();
 
-    if(!sdTest()) 
+    int loop_counter = NEXT_IMAGE_EVERY; // Force first loop to display image
+    while (1)
     {
-        isCard = 1;
-        if(Mode == 0)
+        if (BAT_AVAILABLE)
         {
-            printf("Mode 0\r\n");
-            sdScanDir();
-            file_sort();
-        }
-        if(Mode == 1)
-        {
-            printf("Mode 1\r\n");
-            sdScanDir();
-        }
-        if(Mode == 2)
-        {
-            printf("Mode 2\r\n");
-            file_cat();
-        }
-        
-    }
-    else 
-    {
-        isCard = 0;
-    }
-
-    if(!DEV_Digital_Read(VBUS)) {    // no charge state
-        run_display(Time, alarmTime, isCard);
-    }
-    else {  // charge state
-        chargeState_callback();
-        while(DEV_Digital_Read(VBUS)) {
-            measureVBAT();
-            #if enChargingRtc
-                if(!DEV_Digital_Read(RTC_INT)) {    // RTC interrupt trigger
-                    printf("rtc interrupt\r\n");
-                    run_display(Time, alarmTime, isCard);
-                }
-            #endif
-
-            if(!DEV_Digital_Read(BAT_STATE)) {  // KEY pressed
-                printf("key interrupt\r\n");
-                run_display(Time, alarmTime, isCard);
+            if (measure_battery_voltage() < 3.3)
+            {
+                EPD_7in3e_display_message("Low battery, please charge.");
+                break;
             }
-            DEV_Delay_ms(200);
         }
+        if (++loop_counter >= NEXT_IMAGE_EVERY)
+        {
+            printf("Displaying next image\n");
+            display_next_image();
+        }
+        watchdog_update();
+        sleep_ms(LOOP_DELAY_MS);
+        watchdog_update();
     }
-    
-    printf("power off ...\r\n");
-    powerOff(); // BAT off
 
+    printf("finish\n");
+    powerOff();
     return 0;
 }

@@ -34,7 +34,8 @@ int EPD_7in3e_test(void);
 
 int EPD_7in3e_display(float vol);
 int EPD_7in3e_display_BMP(const char *path, float vol);
-
+int EPD_7in3e_display_bmp(const char *path);
+int EPD_7in3e_display_message(char const *message);
 
 #endif
 
