@@ -146,7 +146,7 @@ int main(void)
         if(NEXT_BUTTON_PRESSED_THIS_CYCLE > 4)
         {
             printf("Next button pressed a lot of times, enable restart\n");
-            enable_watchdog(100, 1);
+            watchdog_enable(100, 1);
             break;
         } else {
             NEXT_BUTTON_PRESSED_THIS_CYCLE = 0;
@@ -160,9 +160,7 @@ int main(void)
         {
             LOOP_COUNTER = 0;
         }
-        watchdog_update();
         sleep_ms(LOOP_DELAY_MS);
-        watchdog_update();
     }
 
     printf("finish\n");
