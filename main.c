@@ -26,6 +26,7 @@
 // count=1; for file in *.bmp; do mv "$file" $(printf "%04d.bmp" $count); ((count++)); done
 int MAX_PICTURE_INDEX = 9999;
 int LOOP_COUNTER = 0;
+int NEXT_BUTTON_PRESSED_THIS_CYCLE = 0;
 
 float measure_battery_voltage(void)
 {
@@ -80,6 +81,7 @@ void next_button_pressed(uint gpio, uint32_t event_mask)
 {
     printf("Next button pressed\n");
     LOOP_COUNTER = 0;
+    ++NEXT_BUTTON_PRESSED_THIS_CYCLE;
 }
 
 int main(void)
@@ -141,6 +143,14 @@ int main(void)
                 break;
             }
         }
+        if(NEXT_BUTTON_PRESSED_THIS_CYCLE > 4)
+        {
+            printf("Next button pressed a lot of times, enable restart\n");
+            enable_watchdog(100, 1);
+            break;
+        } else {
+            NEXT_BUTTON_PRESSED_THIS_CYCLE = 0;
+        }
         if (LOOP_COUNTER == 0)
         {
             printf("Displaying next image\n");
@@ -150,7 +160,9 @@ int main(void)
         {
             LOOP_COUNTER = 0;
         }
+        watchdog_update();
         sleep_ms(LOOP_DELAY_MS);
+        watchdog_update();
     }
 
     printf("finish\n");
