@@ -4,6 +4,7 @@
 #include <pico/rand.h>
 #include <unistd.h>
 #include "led.h"
+#include "ff.h"
 #include "waveshare_PCF85063.h" // RTC
 #include "DEV_Config.h"
 
@@ -22,7 +23,9 @@
 // Display image every NEXT_IMAGE_EVERY loops
 #define NEXT_IMAGE_EVERY 720
 
+// count=1; for file in *.bmp; do mv "$file" $(printf "%04d.bmp" $count); ((count++)); done
 int MAX_PICTURE_INDEX = 9999;
+int LOOP_COUNTER = 0;
 
 float measure_battery_voltage(void)
 {
@@ -34,12 +37,12 @@ float measure_battery_voltage(void)
     return voltage;
 }
 
-int rand_between(int min, int max)
+uint32_t rand_number(uint32_t max)
 {
-    return (get_rand_32() % (max - min + 1)) + min;
+    return 1 + (get_rand_32() % max);
 }
 
-void charge_state_callback()
+void charge_state_callback(uint gpio, uint32_t event_mask)
 {
     if (BAT_IS_CHARGING)
     {
@@ -53,7 +56,8 @@ void charge_state_callback()
 
 bool file_exists(const char *path)
 {
-    return access(path, F_OK) == 0;
+    FILINFO fno;
+    return f_stat(path, &fno) == FR_OK;
 }
 
 void display_next_image()
@@ -62,14 +66,20 @@ void display_next_image()
     char picture_path[20];
     do
     {
-        int next_picture_idx = rand_between(1, MAX_PICTURE_INDEX);
-        sprintf(picture_path, "0:/pic/%04d.bmp", next_picture_idx);
+        int next_picture_idx = rand_number(MAX_PICTURE_INDEX);
+        sprintf(picture_path, "pic/%04d.bmp", next_picture_idx);
         printf("Max idx is %i, checking for image: %s\n", MAX_PICTURE_INDEX, picture_path);
-    } while (!file_exists(picture_path) && MAX_PICTURE_INDEX-- > 0);
+    } while (!file_exists(picture_path) && --MAX_PICTURE_INDEX > 0);
 
     printf("Displaying image: %s\n", picture_path);
     EPD_7in3e_display_bmp(picture_path);
     run_unmount();
+}
+
+void next_button_pressed(uint gpio, uint32_t event_mask)
+{
+    printf("Next button pressed\n");
+    LOOP_COUNTER = 0;
 }
 
 int main(void)
@@ -82,8 +92,11 @@ int main(void)
         return -1;
     }
 
+    PCF85063_init(); // RTC init
+    printf("Checking for battery\n");
     if (BAT_AVAILABLE)
     {
+        printf("Battery found\n");
         if (measure_battery_voltage() < 3.1)
         {
             printf("Low power\n");
@@ -93,6 +106,11 @@ int main(void)
         }
         gpio_set_irq_enabled_with_callback(CHARGE_STATE, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, charge_state_callback);
     }
+    else
+    {
+        printf("No battery connected\n");
+    }
+
     if (MISSING_SD_CARD)
     {
         printf("No SD Card found\n");
@@ -100,13 +118,21 @@ int main(void)
         powerOff(); // BAT off
         return 0;
     }
-    printf("Enable watchdog\n");
-    watchdog_enable(2 * LOOP_DELAY_MS, true);
-    watchdog_update();
+    else
+    {
+        printf("SD Card found\n");
+    }
 
-    int loop_counter = NEXT_IMAGE_EVERY; // Force first loop to display image
+    gpio_set_irq_enabled_with_callback(BAT_STATE, GPIO_IRQ_EDGE_FALL, true, next_button_pressed);
+
+    printf("Starting main loop\n");
+    sleep_ms(1000);
+
+    PWR_LED_OFF;
+
     while (1)
     {
+        printf("Main loop %i/%i\n", LOOP_COUNTER, NEXT_IMAGE_EVERY);
         if (BAT_AVAILABLE)
         {
             if (measure_battery_voltage() < 3.3)
@@ -115,14 +141,16 @@ int main(void)
                 break;
             }
         }
-        if (++loop_counter >= NEXT_IMAGE_EVERY)
+        if (LOOP_COUNTER == 0)
         {
             printf("Displaying next image\n");
             display_next_image();
         }
-        watchdog_update();
+        if (++LOOP_COUNTER >= NEXT_IMAGE_EVERY)
+        {
+            LOOP_COUNTER = 0;
+        }
         sleep_ms(LOOP_DELAY_MS);
-        watchdog_update();
     }
 
     printf("finish\n");
