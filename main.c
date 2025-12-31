@@ -21,7 +21,10 @@
 // Sleep LOOP_DELAY_MS milliseconds per loop
 #define LOOP_DELAY_MS 5000
 // Display image every NEXT_IMAGE_EVERY loops
-#define NEXT_IMAGE_EVERY 720
+// 720 is approximately 1 hour
+// 1440 is approximately 2 hours
+// 2880 is approximately 4 hours
+#define NEXT_IMAGE_EVERY 2880
 
 // count=1; for file in *.bmp; do mv "$file" $(printf "%04d.bmp" $count); ((count++)); done
 int MAX_PICTURE_INDEX = 9999;
